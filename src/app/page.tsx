@@ -47,8 +47,10 @@ export default function Home() {
       setIsTranscribing(true);
       setTranscribeError(null);
       try {
-        const ext = blob.type.includes("ogg") ? "ogg" : "webm";
-        const file = new File([blob], `chunk.${ext}`, { type: blob.type });
+        // Strip codec spec — Whisper only accepts bare MIME types like "audio/webm"
+        const baseMime = blob.type.split(";")[0];
+        const ext = baseMime.includes("ogg") ? "ogg" : "webm";
+        const file = new File([blob], `audio.${ext}`, { type: baseMime });
         const fd = new FormData();
         fd.append("audio", file);
         fd.append("apiKey", settings.groqApiKey);
