@@ -87,10 +87,13 @@ describe("POST /api/chat", () => {
     }));
 
     const [callArgs] = mockStreamCreate.mock.calls;
-    const systemMessage = callArgs[0].messages[0];
+    // gpt-oss-120b requires instructions in the final user message, not a system turn
+    const messages = callArgs[0].messages;
+    const lastMessage = messages[messages.length - 1];
+    expect(lastMessage.role).toBe("user");
     // Detailed answer prompt fills {suggestion_type} and {suggestion_text}
-    expect(systemMessage.content).toContain("talking_point");
-    expect(systemMessage.content).toContain("Redis Cluster handles ~1M ops/sec/node.");
+    expect(lastMessage.content).toContain("talking_point");
+    expect(lastMessage.content).toContain("Redis Cluster handles ~1M ops/sec/node.");
   });
 
   it("uses chatPrompt for direct messages (no suggestion context)", async () => {
@@ -105,10 +108,12 @@ describe("POST /api/chat", () => {
       suggestionContext: null,
     }));
 
-    const systemMessage = mockStreamCreate.mock.calls[0][0].messages[0];
-    expect(systemMessage.content).toContain("We discussed onboarding.");
-    // Should NOT contain suggestion placeholders
-    expect(systemMessage.content).not.toContain("{suggestion_type}");
+    const messages = mockStreamCreate.mock.calls[0][0].messages;
+    const lastMessage = messages[messages.length - 1];
+    expect(lastMessage.role).toBe("user");
+    expect(lastMessage.content).toContain("We discussed onboarding.");
+    // Should NOT contain suggestion placeholders (chat prompt has no {suggestion_type})
+    expect(lastMessage.content).not.toContain("{suggestion_type}");
   });
 
   it("includes chat history in the messages array", async () => {
@@ -129,10 +134,11 @@ describe("POST /api/chat", () => {
     }));
 
     const messages = mockStreamCreate.mock.calls[0][0].messages;
-    // system + 2 history + 1 current = 4
-    expect(messages).toHaveLength(4);
-    expect(messages[1].content).toBe("First question");
-    expect(messages[2].content).toBe("First answer");
+    // 2 history turns + 1 merged (system+user) turn = 3
+    expect(messages).toHaveLength(3);
+    expect(messages[0].content).toBe("First question");
+    expect(messages[1].content).toBe("First answer");
+    expect(messages[2].content).toContain("Follow-up question");
   });
 
   it("returns 400 for an empty user message", async () => {

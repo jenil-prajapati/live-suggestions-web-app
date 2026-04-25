@@ -21,8 +21,8 @@ describe("Prompt templates", () => {
       });
     });
 
-    it("enforces a 15-word limit on suggestion text", () => {
-      expect(DEFAULT_SUGGESTION_PROMPT).toMatch(/15 words/i);
+    it("enforces a tight word limit on suggestion text", () => {
+      expect(DEFAULT_SUGGESTION_PROMPT).toMatch(/\d+ words/i);
     });
 
     it("correctly fills the {transcript} placeholder", () => {
@@ -32,8 +32,13 @@ describe("Prompt templates", () => {
       expect(filled).not.toContain("{transcript}");
     });
 
-    it("instructs the model to return only JSON (no markdown)", () => {
-      expect(DEFAULT_SUGGESTION_PROMPT).toMatch(/no markdown/i);
+    it("specifies JSON-object response schema", () => {
+      expect(DEFAULT_SUGGESTION_PROMPT).toMatch(/suggestions/i);
+      expect(DEFAULT_SUGGESTION_PROMPT).toMatch(/JSON/i);
+    });
+
+    it("guards against invented stats", () => {
+      expect(DEFAULT_SUGGESTION_PROMPT).toMatch(/never invent|do not invent/i);
     });
   });
 
@@ -58,8 +63,16 @@ describe("Prompt templates", () => {
       expect(filled).not.toContain("{suggestion_text}");
     });
 
-    it("requests a detailed multi-paragraph response", () => {
-      expect(DEFAULT_DETAILED_ANSWER_PROMPT).toMatch(/3.{1,5}5 paragraphs/i);
+    it("instructs the copilot tone (not consultant)", () => {
+      expect(DEFAULT_DETAILED_ANSWER_PROMPT).toMatch(/copilot/i);
+    });
+
+    it("forbids inventing numbers", () => {
+      expect(DEFAULT_DETAILED_ANSWER_PROMPT).toMatch(/never invent|do not invent|do not.*invent/i);
+    });
+
+    it("requires a follow-up question", () => {
+      expect(DEFAULT_DETAILED_ANSWER_PROMPT).toMatch(/end with.*question/i);
     });
   });
 
@@ -75,8 +88,12 @@ describe("Prompt templates", () => {
       expect(filled).not.toContain("{transcript}");
     });
 
-    it("requests longer-form responses", () => {
-      expect(DEFAULT_CHAT_PROMPT).toMatch(/3.{1,5}5 paragraphs/i);
+    it("instructs the copilot tone (not consultant)", () => {
+      expect(DEFAULT_CHAT_PROMPT).toMatch(/copilot/i);
+    });
+
+    it("forbids inventing numbers", () => {
+      expect(DEFAULT_CHAT_PROMPT).toMatch(/never invent|do not invent|do not.*invent/i);
     });
   });
 });

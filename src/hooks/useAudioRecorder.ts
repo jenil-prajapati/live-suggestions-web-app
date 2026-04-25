@@ -22,6 +22,9 @@ export function useAudioRecorder({ onChunk, chunkIntervalMs = 30000 }: UseAudioR
     const mimeType = mediaRecorderRef.current?.mimeType ?? "audio/webm";
     const blob = new Blob(chunksRef.current, { type: mimeType });
     chunksRef.current = [];
+    // Skip too-small blobs — they cause Whisper "could not process file" errors.
+    // 10 KB ~= less than ~1 second of audio at webm/opus bitrates.
+    if (blob.size < 10_000) return;
     await onChunk(blob);
   }, [onChunk]);
 

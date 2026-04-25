@@ -37,7 +37,7 @@ describe("POST /api/transcribe", () => {
   beforeEach(() => jest.clearAllMocks());
 
   it("returns transcribed text for a valid audio file", async () => {
-    const audio = makeAudioFile(5000, "audio/webm");
+    const audio = makeAudioFile(15000, "audio/webm");
     const res = await POST(makeRequest(audio, FAKE_KEY));
     const body = await res.json();
 
@@ -54,7 +54,7 @@ describe("POST /api/transcribe", () => {
   });
 
   it("returns 400 when no API key is provided", async () => {
-    const audio = makeAudioFile(5000, "audio/webm");
+    const audio = makeAudioFile(15000, "audio/webm");
     const res = await POST(makeRequest(audio, null));
     const body = await res.json();
 
@@ -62,7 +62,7 @@ describe("POST /api/transcribe", () => {
     expect(body.error).toMatch(/no api key/i);
   });
 
-  it("skips transcription and returns empty text for blobs under 2 KB", async () => {
+  it("skips transcription and returns empty text for blobs under 10 KB", async () => {
     const tinyAudio = makeAudioFile(500, "audio/webm");
     const res = await POST(makeRequest(tinyAudio, FAKE_KEY));
     const body = await res.json();
@@ -74,7 +74,7 @@ describe("POST /api/transcribe", () => {
 
   it("normalises MIME type — strips codec spec before sending to Whisper", async () => {
     // "audio/webm;codecs=opus" is what MediaRecorder produces
-    const audio = makeAudioFile(5000, "audio/webm;codecs=opus");
+    const audio = makeAudioFile(15000, "audio/webm;codecs=opus");
     await POST(makeRequest(audio, FAKE_KEY));
 
     const calledFile: File = mockTranscribeCreate.mock.calls[0][0].file;
@@ -82,10 +82,22 @@ describe("POST /api/transcribe", () => {
     expect(calledFile.type).not.toContain("codecs");
   });
 
-  it("returns 500 with error message when Groq throws", async () => {
+  it("gracefully returns empty text when Whisper says the file is invalid", async () => {
+    // Whisper "could not process file" errors happen on very short/silent audio
+    mockTranscribeCreate.mockRejectedValueOnce(new Error("could not process file"));
+
+    const audio = makeAudioFile(15000, "audio/webm");
+    const res = await POST(makeRequest(audio, FAKE_KEY));
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body.text).toBe("");
+  });
+
+  it("returns 500 for unexpected Groq errors (e.g. rate limits)", async () => {
     mockTranscribeCreate.mockRejectedValueOnce(new Error("API rate limit exceeded"));
 
-    const audio = makeAudioFile(5000, "audio/webm");
+    const audio = makeAudioFile(15000, "audio/webm");
     const res = await POST(makeRequest(audio, FAKE_KEY));
     const body = await res.json();
 

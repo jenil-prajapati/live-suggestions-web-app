@@ -17,6 +17,7 @@ export const DEFAULT_SETTINGS: Omit<SessionSettings, "groqApiKey"> = {
 
 export const MODELS = {
   transcription: "whisper-large-v3",
-  suggestions: "llama-3.3-70b-versatile",
-  chat: "llama-3.3-70b-versatile",
+  // Per assignment spec: GPT-OSS 120B for suggestions and chat
+  suggestions: "openai/gpt-oss-120b",
+  chat: "openai/gpt-oss-120b",
 } as const;

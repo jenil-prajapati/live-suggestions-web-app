@@ -48,23 +48,32 @@ export async function POST(req: NextRequest) {
       systemPrompt = prompt.replace("{transcript}", transcript);
     }
 
-    // Build message history for context
+    // Per Groq docs for gpt-oss-120b: put instructions in the user message,
+    // not a system prompt. Prepend the system prompt to the user turn instead.
+    const history = chatHistory.slice(-10).map((m) => ({
+      role: m.role as "user" | "assistant",
+      content: m.content,
+    }));
     const messages: Groq.Chat.ChatCompletionMessageParam[] = [
-      { role: "system", content: systemPrompt },
-      ...chatHistory.slice(-10).map((m) => ({
-        role: m.role as "user" | "assistant",
-        content: m.content,
-      })),
-      { role: "user", content: userMessage },
+      ...history,
+      { role: "user", content: `${systemPrompt}\n\n---\nUser message:\n${userMessage}` },
     ];
 
-    const stream = await groq.chat.completions.create({
+    // gpt-oss-120b is a reasoning model. Keep reasoning hidden and use medium effort
+    // for quality + latency balance. Cast extra fields via `as any` because the SDK
+    // types don't yet include reasoning_effort/include_reasoning.
+    const createParams = {
       model: MODELS.chat,
       messages,
       temperature: 0.6,
-      max_tokens: 4096,
-      stream: true,
-    });
+      max_completion_tokens: 4096,
+      stream: true as const,
+      reasoning_effort: "medium",
+      include_reasoning: false,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } as any;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const stream = (await groq.chat.completions.create(createParams)) as unknown as AsyncIterable<any>;
 
     // Stream the response back as SSE
     const encoder = new TextEncoder();
