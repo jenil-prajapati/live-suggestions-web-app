@@ -23,18 +23,39 @@ export async function POST(req: NextRequest) {
 
     const completion = await groq.chat.completions.create({
       model: MODELS.suggestions,
-      messages: [{ role: "user", content: filledPrompt }],
+      messages: [
+        {
+          role: "system",
+          content:
+            "You are an AI meeting copilot. Always respond with ONLY a valid JSON array — no markdown, no explanation.",
+        },
+        { role: "user", content: filledPrompt },
+      ],
       temperature: 0.7,
-      max_tokens: 512, // enough headroom for 3 suggestions without cutting mid-JSON
+      max_tokens: 512,
     });
 
-    const raw = completion.choices[0]?.message?.content ?? "[]";
-    console.log("[suggestions] raw model output:", raw.slice(0, 500));
+    const choice = completion.choices[0];
+    // Some Groq reasoning models surface output in reasoning_content instead of content
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const raw: string = choice?.message?.content || (choice?.message as any)?.reasoning_content || "";
+    console.log(
+      "[suggestions] finish_reason:", choice?.finish_reason,
+      "| content length:", raw.length,
+      "| preview:", raw.slice(0, 300)
+    );
+
+    if (!raw) {
+      return NextResponse.json(
+        { error: `Model returned empty response (finish_reason: ${choice?.finish_reason})` },
+        { status: 500 }
+      );
+    }
 
     // Extract JSON array even if model wraps it in markdown
     const jsonMatch = raw.match(/\[[\s\S]*\]/);
     if (!jsonMatch) {
-      return NextResponse.json({ error: "Model returned invalid JSON", raw }, { status: 500 });
+      return NextResponse.json({ error: "Model returned invalid JSON", raw: raw.slice(0, 200) }, { status: 500 });
     }
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
