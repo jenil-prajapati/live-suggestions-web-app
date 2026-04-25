@@ -2,15 +2,11 @@
 
 okay so here's what this thing is supposed to do and how i want it built. read this before touching anything.
 
----
-
 ## the idea
 
 it's an AI meeting copilot. you leave the mic running during a meeting and it listens, transcribes what's being said, and every 30 seconds surfaces 3 useful suggestions — stuff like a smart question to ask, a fact to bring up, or an answer to something that was just asked. clicking one of those cards opens a detailed answer on the right. you can also just type questions directly.
 
 that's it. keep it simple.
-
----
 
 ## what the LLM needs to do
 
@@ -29,8 +25,6 @@ now use more context — up to 12000 chars of transcript. you know which suggest
 **3. direct chat**
 same depth as #2. user typed something directly. use the transcript as context, answer it thoroughly, stream it back token by token.
 
----
-
 ## stuff that trips people up
 
 - the mic records in chunks. MediaRecorder gives us `audio/webm;codecs=opus` as the MIME type. whisper doesn't like that — strip the codec part before sending. just use `audio/webm`.
@@ -39,16 +33,12 @@ same depth as #2. user typed something directly. use the transcript as context, 
 - the manual reload button should flush whatever audio is buffered first, then generate suggestions. not just suggestions alone.
 - no database, no auth, no .env keys. the user pastes their own groq key in settings. it lives in localStorage. never log it.
 
----
-
 ## the stack
 
 - next.js 16 app router (frontend + api routes in one repo)
 - tailwind css, typescript
 - groq SDK — whisper-large-v3 for transcription, openai/gpt-oss-120b for everything else
 - jest for tests
-
----
 
 ## files worth knowing
 
@@ -57,8 +47,6 @@ same depth as #2. user typed something directly. use the transcript as context, 
 - `src/lib/defaults.ts` — model names and default context window sizes
 - `src/hooks/useAudioRecorder.ts` — mic + chunking logic
 - `__tests__/` — jest tests for all 3 api routes + the prompt templates
-
----
 
 ## what i care about most
 

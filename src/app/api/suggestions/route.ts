@@ -25,7 +25,7 @@ export async function POST(req: NextRequest) {
       model: MODELS.suggestions,
       messages: [{ role: "user", content: filledPrompt }],
       temperature: 0.7,
-      max_tokens: 300, // 3 short suggestions fit easily in 300 tokens
+      max_tokens: 512, // enough headroom for 3 suggestions without cutting mid-JSON
     });
 
     const raw = completion.choices[0]?.message?.content ?? "[]";

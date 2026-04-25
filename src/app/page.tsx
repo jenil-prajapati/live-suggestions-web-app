@@ -35,6 +35,8 @@ export default function Home() {
   const refreshTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const isRecordingRef = useRef(false);
+  // Always points to the latest fetchSuggestions so the interval never uses a stale closure
+  const fetchSuggestionsRef = useRef<() => Promise<void>>(async () => {});
 
   // ── Transcript utils ──────────────────────────────────────────────────────
   const fullTranscript = transcriptChunks.map((c) => c.text).join(" ");
@@ -106,13 +108,20 @@ export default function Home() {
     }
   }, [settings, recentTranscript]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Keep the ref in sync whenever fetchSuggestions is recreated (new transcript data)
+  useEffect(() => {
+    fetchSuggestionsRef.current = fetchSuggestions;
+  }, [fetchSuggestions]);
+
   // ── Auto-refresh loop ──────────────────────────────────────────────────────
   const startRefreshLoop = useCallback(() => {
     const interval = settings.refreshIntervalMs;
     setNextRefreshIn(interval);
 
+    // Use ref so the interval always calls the latest fetchSuggestions,
+    // not the stale closure captured when recording started
     refreshTimerRef.current = setInterval(() => {
-      if (isRecordingRef.current) fetchSuggestions();
+      if (isRecordingRef.current) fetchSuggestionsRef.current();
     }, interval);
 
     countdownRef.current = setInterval(() => {
@@ -121,7 +130,7 @@ export default function Home() {
         return prev - 1000;
       });
     }, 1000);
-  }, [settings.refreshIntervalMs, fetchSuggestions]);
+  }, [settings.refreshIntervalMs]); // no longer depends on fetchSuggestions
 
   const stopRefreshLoop = useCallback(() => {
     if (refreshTimerRef.current) clearInterval(refreshTimerRef.current);
@@ -165,10 +174,10 @@ export default function Home() {
     if (isRecordingRef.current) {
       await flushAudio(); // awaits transcribeChunk internally
     }
-    await fetchSuggestions();
+    await fetchSuggestionsRef.current();
     // Reset the auto-refresh countdown so it doesn't fire again immediately
     setNextRefreshIn(settings.refreshIntervalMs);
-  }, [flushAudio, fetchSuggestions, settings.refreshIntervalMs]);
+  }, [flushAudio, settings.refreshIntervalMs]);
 
   // ── Send chat message ──────────────────────────────────────────────────────
   const handleChatSend = useCallback(
