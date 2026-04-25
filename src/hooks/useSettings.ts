@@ -5,7 +5,7 @@ import { DEFAULT_SETTINGS } from "@/lib/defaults";
 
 const STORAGE_KEY = "twinmind_settings";
 // Bump this when prompts change so old localStorage values are replaced
-const SETTINGS_VERSION = 2;
+const SETTINGS_VERSION = 4;
 const VERSION_KEY = "twinmind_settings_version";
 
 export function useSettings() {
