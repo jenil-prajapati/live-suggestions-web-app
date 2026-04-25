@@ -5,7 +5,6 @@ import {
   DEFAULT_CHAT_PROMPT,
 } from "./prompts";
 
-// detailedAnswerPrompt placeholders: {transcript}, {suggestion_type}, {suggestion_text}
 export const DEFAULT_SETTINGS: Omit<SessionSettings, "groqApiKey"> = {
   suggestionPrompt: DEFAULT_SUGGESTION_PROMPT,
   detailedAnswerPrompt: DEFAULT_DETAILED_ANSWER_PROMPT,
@@ -17,7 +16,6 @@ export const DEFAULT_SETTINGS: Omit<SessionSettings, "groqApiKey"> = {
 
 export const MODELS = {
   transcription: "whisper-large-v3",
-  // Per assignment spec: GPT-OSS 120B for suggestions and chat
   suggestions: "openai/gpt-oss-120b",
   chat: "openai/gpt-oss-120b",
 } as const;

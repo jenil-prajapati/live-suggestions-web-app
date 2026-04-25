@@ -33,7 +33,6 @@ export function ChatPanel({ messages, isStreaming, streamingContent, onSend }: P
 
   return (
     <div className="flex flex-col h-full">
-      {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-white/8">
         <span className="text-xs font-bold uppercase tracking-widest text-white/40">
           3. Chat (Detailed Answers)
@@ -43,7 +42,6 @@ export function ChatPanel({ messages, isStreaming, streamingContent, onSend }: P
         </span>
       </div>
 
-      {/* Messages */}
       <div className="flex-1 overflow-y-auto px-4 py-4 space-y-5">
         {messages.length === 0 && !isStreaming && (
           <p className="text-xs text-white/25 italic text-center mt-8">
@@ -54,7 +52,6 @@ export function ChatPanel({ messages, isStreaming, streamingContent, onSend }: P
         {messages.map((msg) => (
           <div key={msg.id} className="space-y-1">
             {msg.role === "user" ? (
-              /* User bubble */
               <div className="rounded-lg px-3 py-2.5 bg-white/8 border border-white/10">
                 <p className="text-[9px] font-semibold text-white/35 uppercase tracking-widest mb-1.5">
                   You{msg.suggestionRef ? ` · ${msg.suggestionRef}` : ""}
@@ -62,7 +59,6 @@ export function ChatPanel({ messages, isStreaming, streamingContent, onSend }: P
                 <p className="text-sm text-white/85 leading-snug">{msg.content}</p>
               </div>
             ) : (
-              /* Assistant response */
               <div className="px-1">
                 <p className="text-[9px] font-semibold text-white/35 uppercase tracking-widest mb-2">
                   Assistant
@@ -76,7 +72,6 @@ export function ChatPanel({ messages, isStreaming, streamingContent, onSend }: P
           </div>
         ))}
 
-        {/* Streaming assistant message */}
         {isStreaming && (
           <div className="px-1">
             <p className="text-[9px] font-semibold text-white/35 uppercase tracking-widest mb-2">Assistant</p>
@@ -98,7 +93,6 @@ export function ChatPanel({ messages, isStreaming, streamingContent, onSend }: P
         <div ref={bottomRef} />
       </div>
 
-      {/* Input */}
       <div className="border-t border-white/8 px-4 py-3">
         <div className="flex gap-2 items-end">
           <textarea

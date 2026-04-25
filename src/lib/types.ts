@@ -8,7 +8,6 @@ export type SuggestionType =
 export interface Suggestion {
   id: string;
   type: SuggestionType;
-  /** The full suggestion text — 1-2 sentences, immediately useful on its own */
   text: string;
 }
 
@@ -23,7 +22,7 @@ export interface ChatMessage {
   role: "user" | "assistant";
   content: string;
   timestamp: number;
-  /** If this message was triggered by clicking a suggestion */
+  /** Populated when the message originated from a suggestion click. */
   suggestionRef?: string;
 }
 
@@ -38,11 +37,8 @@ export interface SessionSettings {
   suggestionPrompt: string;
   detailedAnswerPrompt: string;
   chatPrompt: string;
-  /** Number of recent transcript chars to pass for suggestions */
   suggestionContextChars: number;
-  /** Number of recent transcript chars to pass for detailed answers */
   detailedAnswerContextChars: number;
-  /** Auto-refresh interval in ms */
   refreshIntervalMs: number;
 }
 

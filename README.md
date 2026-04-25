@@ -1,85 +1,96 @@
 # TwinMind — Live Suggestions
 
-An always-on AI meeting copilot that listens to your mic, transcribes in real time, and continuously surfaces 3 context-aware suggestions. Click any suggestion for a detailed answer, or chat directly.
+A live meeting copilot. Listens to your mic, transcribes in real time, and every 30 seconds surfaces 3 diagnostic suggestions — questions to ask, talking points, answers, fact-checks, or clarifications. Click any card for a grounded detailed answer, or chat directly.
 
-**Live demo:** _[Deploy URL here]_
+**Live demo:** _[deploy URL]_
 
 ---
 
 ## Stack
 
-| Layer | Choice | Why |
-|---|---|---|
-| Framework | Next.js 16 (App Router) | SSR + API routes in one repo; streaming responses work out of the box |
-| Language | TypeScript | Type safety across shared types (suggestions, chat, transcript) |
-| Styling | Tailwind CSS v4 | Fast iteration on dark-theme utility classes |
-| AI | Groq SDK | `whisper-large-v3` for transcription, `openai/gpt-oss-120b` for suggestions + chat |
-| Audio | Web `MediaRecorder` API | Browser-native, no extra deps; flushes 30s chunks |
+| Layer | Choice |
+|---|---|
+| Framework | Next.js 16 (App Router) |
+| Language | TypeScript |
+| Styling | Tailwind CSS v4 |
+| Transcription | Groq `whisper-large-v3` |
+| Suggestions + Chat | Groq `openai/gpt-oss-120b` |
+| Audio | Browser `MediaRecorder` |
+| Tests | Jest + ts-jest |
+
+Everything frontend and backend lives in one Next.js repo. Streaming chat responses use SSE over a `ReadableStream`.
 
 ---
 
 ## Setup
 
-1. **Requires Node.js ≥ 20.** If you use nvm: `nvm use 20`
-2. Clone the repo and install:
-   ```bash
-   npm install
-   ```
-3. Start dev server:
-   ```bash
-   npm run dev
-   ```
-4. Open `http://localhost:3000`, click **Settings**, and paste your [Groq API key](https://console.groq.com/keys).
+Node.js **20+** is required.
 
-No `.env` file needed — the key is stored only in your browser's `localStorage`.
+```bash
+nvm use 20
+npm install
+npm run dev
+```
 
----
+Open `http://localhost:3000`, click **Settings**, and paste your [Groq API key](https://console.groq.com/keys). The key is stored in `localStorage` only — no `.env` file, nothing persisted server-side.
 
-## Prompt Strategy
-
-### Live Suggestions (every ~30s)
-The suggestions prompt receives the **last 4,000 characters** of the transcript (configurable). It instructs the model to:
-
-- Identify what just happened in the conversation: question asked? claim made? topic shift? silence?
-- Choose suggestion **types dynamically** — not always 3 of the same type. Types: `question_to_ask`, `talking_point`, `answer`, `fact_check`, `clarification`.
-- Write a **preview that delivers value on its own** — not a teaser. If the model answers a question in the preview, the user already wins before clicking.
-- Never be generic. Every suggestion must reference something specific from the transcript.
-
-This is the core judgment call: the model reads the most recent lines, decides what the user needs right now (an answer, a fact check, a follow-up question), and generates all three with substance.
-
-### Detailed Answer (on suggestion click)
-Uses the **full transcript** up to 12,000 characters. Passes the clicked suggestion's type and text as context, and asks the model to expand — not repeat — into 3–5 paragraphs with concrete numbers, examples, and actionable next steps. This creates a clear two-level UX: read the card for immediate value, click for depth.
-
-### Chat (direct messages)
-System prompt + rolling **last 10 messages** for conversational coherence. Same detailed-answer depth as suggestion clicks — 3–5 paragraphs with specific references to the transcript. Streamed token-by-token for low perceived latency.
+```bash
+npm test         # run unit + integration tests
+npm run build    # production build
+```
 
 ---
 
-## Context Window Choices
+## How it works
 
-| Use case | Default | Rationale |
+Three panels, one continuous session:
+
+1. **Transcript.** `MediaRecorder` records 1-second audio slices. Every 30 s they're flushed as a single `webm` blob to `/api/transcribe`, which strips the codec suffix from the MIME type, guards against sub-10 KB silent blobs, and hands it to Whisper.
+2. **Live suggestions.** Every 30 s the last ~4,000 chars of transcript are sent to `/api/suggestions`, which calls `gpt-oss-120b` in `json_object` mode with `reasoning_effort: "low"`. The response is parsed defensively (the model occasionally emits `title` or `preview` instead of `text` — the parser picks the longest non-empty field). The manual **Reload** button flushes audio first, then regenerates.
+3. **Chat.** Clicking a suggestion auto-sends it with the `detailedAnswerPrompt`. Typing directly uses the `chatPrompt`. Both stream token-by-token from `/api/chat`. Last 10 messages are kept for conversational coherence.
+
+A thin version-bumped migration in `useSettings` ensures new prompt defaults replace stale ones in `localStorage` when the app updates, without losing the user's API key.
+
+---
+
+## Prompt strategy
+
+Prompt quality is the entire product. All three prompts live in `src/lib/prompts.ts` and are user-editable in Settings.
+
+**Live suggestions.** Forces diagnostic, probing output — not restatements. Every prompt includes explicit *WEAK vs. STRONG* examples so the model has a concrete contrast to learn from (few-shot over pure instructions works dramatically better). Each suggestion is one sentence, ≤18 words, and must be anchored to a specific line in the transcript. At least one must be a `question_to_ask`.
+
+**Detailed answer.** 1 direct sentence + 3–4 tight bullets + 1 follow-up question. Explicitly forbids inventing stats or slipping into consultant-mode ("we'll implement X"). The model speaks in second person because the user is in a meeting, not staffing a project.
+
+**Chat.** Same shape as detailed answer. Streamed. Rolling 10-message history for continuity.
+
+---
+
+## Context windows
+
+| Use | Default | Why |
 |---|---|---|
-| Suggestions | 4,000 chars (~1,000 tokens) | Enough for ~2 min of speech; avoids noise from too-early context |
-| Detailed answers / chat | 12,000 chars (~3,000 tokens) | Full meeting arc for richer answers |
-| Chat history | Last 10 messages | Keeps chat coherent without ballooning tokens |
+| Live suggestions | 4,000 chars (~1,000 tok) | Enough for ~2 min of speech; avoids noise from stale context |
+| Detailed answer / chat | 12,000 chars (~3,000 tok) | Full meeting arc for richer answers |
+| Chat history | Last 10 messages | Keeps coherence without ballooning tokens |
 
-All values are user-editable in Settings → Context & Timing.
+All three are user-configurable under **Settings → Context & Timing**.
 
 ---
 
 ## Tradeoffs
 
-- **Client-side audio chunking (30s):** The `MediaRecorder` collects 1-second slices and flushes a blob every 30s to `/api/transcribe`. This means transcript latency ≤ 30s. A shorter interval (e.g. 10s) would reduce latency but increase API calls. Configurable via Settings.
-- **Suggestions on every refresh, not on every new chunk:** Transcription and suggestion refreshes are decoupled. Transcription happens whenever a chunk arrives; suggestions refresh on a separate 30s timer. This avoids regenerating suggestions for small transcript deltas.
-- **No streaming for suggestions:** Suggestions are returned as a JSON object. Streaming a JSON array mid-generation would require complex partial parsing. Given ~500 tps on Groq, a 3-suggestion response is typically under 2 seconds.
-- **localStorage for settings:** Simple, no backend needed for this prototype. The API key never leaves the browser except in direct calls to Groq.
-- **No login/persistence:** Per spec. Session state is fully in-memory; export to JSON before closing.
+- **30 s audio chunking.** Shorter intervals reduce transcript latency but multiply API calls. Configurable.
+- **Suggestions on timer, not on every new chunk.** Otherwise small transcript deltas cause redundant regenerations.
+- **No streaming for suggestions.** JSON-object mode returns a single object; mid-generation parsing isn't worth the complexity for a ~1–2 s response.
+- **`localStorage` for settings + API key.** Simple, no backend needed. The key never leaves the browser except in calls to Groq.
+- **No login or persistence.** Per spec. Export the session to JSON before closing.
+- **Merged system prompt into user turn.** `gpt-oss-120b` behaves better this way per Groq's own guidance.
 
 ---
 
-## Export Format
+## Export format
 
-Clicking **Export** downloads a JSON file:
+The **Export** button downloads:
 
 ```json
 {
@@ -91,7 +102,7 @@ Clicking **Export** downloads a JSON file:
     {
       "timestamp": "...",
       "suggestions": [
-        { "type": "question_to_ask", "text": "What's your current p99 latency on websocket round-trips?" }
+        { "type": "question_to_ask", "text": "..." }
       ]
     }
   ],
@@ -100,4 +111,29 @@ Clicking **Export** downloads a JSON file:
     { "timestamp": "...", "role": "assistant", "content": "..." }
   ]
 }
+```
+
+---
+
+## Project layout
+
+```
+src/
+├── app/
+│   ├── api/
+│   │   ├── chat/route.ts           SSE chat endpoint
+│   │   ├── suggestions/route.ts    JSON suggestions endpoint
+│   │   └── transcribe/route.ts     Whisper wrapper with size + MIME guards
+│   ├── layout.tsx
+│   └── page.tsx                    Session state + three-panel orchestration
+├── components/                     TranscriptPanel, SuggestionsPanel, ChatPanel, SuggestionCard, SettingsModal
+├── hooks/
+│   ├── useAudioRecorder.ts         MediaRecorder + 30 s flush loop
+│   └── useSettings.ts              localStorage + versioned migration
+└── lib/
+    ├── defaults.ts                 MODELS + DEFAULT_SETTINGS
+    ├── prompts.ts                  The three prompt templates
+    └── types.ts                    Shared types
+
+__tests__/                          Jest tests: prompts, chat, suggestions, transcribe
 ```

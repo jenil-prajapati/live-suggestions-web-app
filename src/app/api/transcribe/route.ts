@@ -2,6 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import Groq from "groq-sdk";
 import { MODELS } from "@/lib/defaults";
 
+// Blobs below this size are almost always silence or codec headers and will
+// cause Whisper to return "could not process file" 400s.
+const MIN_BLOB_BYTES = 10_000;
+
 export async function POST(req: NextRequest) {
   try {
     const formData = await req.formData();
@@ -10,16 +14,9 @@ export async function POST(req: NextRequest) {
 
     if (!audio) return NextResponse.json({ error: "No audio provided" }, { status: 400 });
     if (!apiKey) return NextResponse.json({ error: "No API key provided" }, { status: 400 });
+    if (audio.size < MIN_BLOB_BYTES) return NextResponse.json({ text: "" });
 
-    // Skip blobs that are too small to contain real speech.
-    // 10 KB threshold — covers cases where the mic captured only silence/header frames
-    // and would cause Whisper to return "could not process file" 400.
-    if (audio.size < 10_000) {
-      return NextResponse.json({ text: "" });
-    }
-
-    // Normalize MIME type — strip codec spec that Whisper doesn't accept
-    // e.g. "audio/webm;codecs=opus" → "audio/webm"
+    // Whisper rejects MIME types with codec suffixes (e.g. audio/webm;codecs=opus).
     const baseMime = audio.type.split(";")[0] || "audio/webm";
     const ext = baseMime.includes("ogg") ? "ogg" : "webm";
     const normalizedFile = new File([audio], `audio.${ext}`, { type: baseMime });
@@ -34,18 +31,18 @@ export async function POST(req: NextRequest) {
       });
       return NextResponse.json({ text: transcription.text });
     } catch (whisperErr: unknown) {
-      // Gracefully swallow Whisper "could not process file" errors — they happen
-      // when the user stops recording mid-chunk or on very short/silent audio.
+      // Short/silent/truncated chunks slip past the size guard occasionally;
+      // treat them as empty rather than surfacing a 500 to the UI.
       const msg = whisperErr instanceof Error ? whisperErr.message : "";
       if (msg.includes("could not process file") || msg.includes("invalid media")) {
-        console.warn("[transcribe] skipping unprocessable audio chunk:", audio.size, "bytes");
+        console.warn("[transcribe] skipping unprocessable chunk:", audio.size, "bytes");
         return NextResponse.json({ text: "" });
       }
       throw whisperErr;
     }
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Transcription failed";
-    console.error("[transcribe] error:", message);
+    console.error("[transcribe]", message);
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }

@@ -32,7 +32,6 @@ export function SuggestionsPanel({
 
   return (
     <div className="flex flex-col h-full">
-      {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-white/8">
         <span className="text-xs font-bold uppercase tracking-widest text-white/40">
           2. Live Suggestions
@@ -42,7 +41,6 @@ export function SuggestionsPanel({
         </span>
       </div>
 
-      {/* Refresh bar */}
       <div className="flex items-center justify-between px-4 py-2.5 border-b border-white/8">
         <button
           onClick={onRefresh}
@@ -69,7 +67,6 @@ export function SuggestionsPanel({
         </span>
       </div>
 
-      {/* Suggestion batches */}
       <div className="flex-1 overflow-y-auto px-4 py-4 space-y-6">
         <div ref={topRef} />
         {batches.length === 0 ? (
@@ -79,7 +76,6 @@ export function SuggestionsPanel({
         ) : (
           [...batches].reverse().map((batch, batchIdx) => (
             <div key={batch.id}>
-              {/* Batch timestamp divider */}
               <div className="flex items-center gap-2 mb-2">
                 <div className="flex-1 h-px bg-white/8" />
                 <span className="text-[9px] font-mono text-white/25 shrink-0">

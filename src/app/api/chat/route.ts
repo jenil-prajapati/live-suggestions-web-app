@@ -20,10 +20,7 @@ export async function POST(req: NextRequest) {
       userMessage: string;
       prompt: string;
       apiKey: string;
-      suggestionContext?: {
-        type: string;
-        text: string;
-      } | null;
+      suggestionContext?: { type: string; text: string } | null;
       detailedAnswerPrompt?: string;
     };
 
@@ -36,20 +33,16 @@ export async function POST(req: NextRequest) {
 
     const groq = new Groq({ apiKey });
 
-    let systemPrompt: string;
-    if (suggestionContext && detailedAnswerPrompt) {
-      // Detailed answer for a clicked suggestion
-      systemPrompt = detailedAnswerPrompt
-        .replace("{transcript}", transcript)
-        .replace("{suggestion_type}", suggestionContext.type)
-        .replace("{suggestion_text}", suggestionContext.text);
-    } else {
-      // Regular chat
-      systemPrompt = prompt.replace("{transcript}", transcript);
-    }
+    const systemPrompt =
+      suggestionContext && detailedAnswerPrompt
+        ? detailedAnswerPrompt
+            .replace("{transcript}", transcript)
+            .replace("{suggestion_type}", suggestionContext.type)
+            .replace("{suggestion_text}", suggestionContext.text)
+        : prompt.replace("{transcript}", transcript);
 
-    // Per Groq docs for gpt-oss-120b: put instructions in the user message,
-    // not a system prompt. Prepend the system prompt to the user turn instead.
+    // Per Groq's gpt-oss-120b guidance, instructions belong in the final user
+    // turn rather than a separate system message.
     const history = chatHistory.slice(-10).map((m) => ({
       role: m.role as "user" | "assistant",
       content: m.content,
@@ -59,9 +52,6 @@ export async function POST(req: NextRequest) {
       { role: "user", content: `${systemPrompt}\n\n---\nUser message:\n${userMessage}` },
     ];
 
-    // gpt-oss-120b is a reasoning model. Keep reasoning hidden and use medium effort
-    // for quality + latency balance. Cast extra fields via `as any` because the SDK
-    // types don't yet include reasoning_effort/include_reasoning.
     const createParams = {
       model: MODELS.chat,
       messages,
@@ -75,7 +65,6 @@ export async function POST(req: NextRequest) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const stream = (await groq.chat.completions.create(createParams)) as unknown as AsyncIterable<any>;
 
-    // Stream the response back as SSE
     const encoder = new TextEncoder();
     const readable = new ReadableStream({
       async start(controller) {
@@ -102,7 +91,7 @@ export async function POST(req: NextRequest) {
     });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Chat failed";
-    console.error("[chat] Error:", err);
+    console.error("[chat]", message);
     return new Response(JSON.stringify({ error: message }), { status: 500 });
   }
 }

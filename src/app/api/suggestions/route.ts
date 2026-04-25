@@ -19,16 +19,13 @@ export async function POST(req: NextRequest) {
 
     const groq = new Groq({ apiKey });
 
-    // Wrap the prompt so json_object mode has a root object to return
+    // json_object mode requires the root to be an object; wrap the array in one.
     const filledPrompt = prompt.replace("{transcript}", transcript);
     const wrappedPrompt = `${filledPrompt}
 
 IMPORTANT: Return a JSON object with a single key "suggestions" whose value is the array of 3 suggestions.
 Example: { "suggestions": [ { "type": "question_to_ask", "text": "..." }, ... ] }`;
 
-    // gpt-oss-120b is a reasoning model — per Groq docs, put all instructions
-    // in the user message (avoid system prompt) and use response_format json_object
-    // with reasoning_effort low for fast live suggestions.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const completion: any = await groq.chat.completions.create({
       model: MODELS.suggestions,
@@ -43,12 +40,6 @@ Example: { "suggestions": [ { "type": "question_to_ask", "text": "..." }, ... ] 
     const choice = completion.choices[0];
     const raw: string = choice?.message?.content || "";
 
-    console.log(
-      "[suggestions] finish_reason:", choice?.finish_reason,
-      "| content length:", raw.length,
-      "| preview:", raw.slice(0, 250)
-    );
-
     if (!raw) {
       return NextResponse.json(
         { error: `Model returned empty response (finish_reason: ${choice?.finish_reason})` },
@@ -60,7 +51,7 @@ Example: { "suggestions": [ { "type": "question_to_ask", "text": "..." }, ... ] 
     try {
       parsedRoot = JSON.parse(raw);
     } catch {
-      // fallback: try to extract an array if the model didn't wrap in object
+      // Fallback: the model occasionally emits a bare array despite json_object mode.
       const arrMatch = raw.match(/\[[\s\S]*\]/);
       if (!arrMatch) {
         return NextResponse.json({ error: "Model returned invalid JSON", raw: raw.slice(0, 200) }, { status: 500 });
@@ -87,7 +78,8 @@ Example: { "suggestions": [ { "type": "question_to_ask", "text": "..." }, ... ] 
       .map((item, i) => {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const s = item as any;
-        // Pick the longest non-empty text field (text is preferred but model may use others)
+        // Models sometimes emit the body under title/preview/etc. Pick whichever
+        // non-empty field carries the most content.
         const text =
           [s.text, s.preview, s.suggestion, s.content, s.description, s.title]
             .filter((v): v is string => typeof v === "string" && v.trim().length > 0)
@@ -101,13 +93,16 @@ Example: { "suggestions": [ { "type": "question_to_ask", "text": "..." }, ... ] 
       .filter((s) => s.text);
 
     if (suggestions.length === 0) {
-      return NextResponse.json({ error: "Model returned suggestions with no text", raw: raw.slice(0, 200) }, { status: 500 });
+      return NextResponse.json(
+        { error: "Model returned suggestions with no text", raw: raw.slice(0, 200) },
+        { status: 500 }
+      );
     }
 
     return NextResponse.json({ suggestions });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Suggestions failed";
-    console.error("[suggestions] error:", message);
+    console.error("[suggestions]", message);
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }

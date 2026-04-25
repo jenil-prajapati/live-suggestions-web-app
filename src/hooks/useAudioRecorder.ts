@@ -1,8 +1,10 @@
 "use client";
 import { useState, useRef, useCallback } from "react";
 
+const MIN_BLOB_BYTES = 10_000;
+
 interface UseAudioRecorderOptions {
-  /** Called with each audio blob. Can be async — flush awaits it before returning. */
+  /** Called with each audio blob. May be async — flush awaits it. */
   onChunk: (blob: Blob) => Promise<void> | void;
   chunkIntervalMs?: number;
 }
@@ -16,15 +18,12 @@ export function useAudioRecorder({ onChunk, chunkIntervalMs = 30000 }: UseAudioR
   const chunksRef = useRef<Blob[]>([]);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  /** Builds a blob from buffered slices, clears the buffer, and calls onChunk. */
   const flush = useCallback(async (): Promise<void> => {
     if (chunksRef.current.length === 0) return;
     const mimeType = mediaRecorderRef.current?.mimeType ?? "audio/webm";
     const blob = new Blob(chunksRef.current, { type: mimeType });
     chunksRef.current = [];
-    // Skip too-small blobs — they cause Whisper "could not process file" errors.
-    // 10 KB ~= less than ~1 second of audio at webm/opus bitrates.
-    if (blob.size < 10_000) return;
+    if (blob.size < MIN_BLOB_BYTES) return;
     await onChunk(blob);
   }, [onChunk]);
 
@@ -34,7 +33,6 @@ export function useAudioRecorder({ onChunk, chunkIntervalMs = 30000 }: UseAudioR
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       streamRef.current = stream;
 
-      // Pick a supported MIME type — Whisper accepts webm, mp4, ogg, etc.
       const mimeType = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
         ? "audio/webm;codecs=opus"
         : MediaRecorder.isTypeSupported("audio/webm")
@@ -48,14 +46,13 @@ export function useAudioRecorder({ onChunk, chunkIntervalMs = 30000 }: UseAudioR
         if (e.data.size > 0) chunksRef.current.push(e.data);
       };
 
-      recorder.start(1000); // collect 1-second slices so flush works at any time
+      // 1-second slices let flush() run at any point during the 30s window.
+      recorder.start(1000);
       setIsRecording(true);
 
-      // Auto-flush every chunkIntervalMs
       intervalRef.current = setInterval(flush, chunkIntervalMs);
     } catch (err) {
-      const msg = err instanceof Error ? err.message : "Mic access denied";
-      setError(msg);
+      setError(err instanceof Error ? err.message : "Mic access denied");
     }
   }, [flush, chunkIntervalMs]);
 
@@ -67,7 +64,7 @@ export function useAudioRecorder({ onChunk, chunkIntervalMs = 30000 }: UseAudioR
     if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
       mediaRecorderRef.current.stop();
     }
-    // Flush any remaining audio after the recorder has fully stopped
+    // Wait for the recorder to fully stop before flushing the tail.
     setTimeout(flush, 200);
 
     streamRef.current?.getTracks().forEach((t) => t.stop());

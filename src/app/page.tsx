@@ -35,21 +35,19 @@ export default function Home() {
   const refreshTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const isRecordingRef = useRef(false);
-  // Always points to the latest fetchSuggestions so the interval never uses a stale closure
+  // Points to the latest fetchSuggestions so setInterval never captures a stale closure.
   const fetchSuggestionsRef = useRef<() => Promise<void>>(async () => {});
 
-  // ── Transcript utils ──────────────────────────────────────────────────────
   const fullTranscript = transcriptChunks.map((c) => c.text).join(" ");
   const recentTranscript = (chars: number) => fullTranscript.slice(-chars);
 
-  // ── Transcribe audio chunk ─────────────────────────────────────────────────
   const transcribeChunk = useCallback(
     async (blob: Blob) => {
       if (!settings.groqApiKey) return;
       setIsTranscribing(true);
       setTranscribeError(null);
       try {
-        // Strip codec spec — Whisper only accepts bare MIME types like "audio/webm"
+        // Whisper rejects MIME types with codec suffixes (e.g. audio/webm;codecs=opus).
         const baseMime = blob.type.split(";")[0];
         const ext = baseMime.includes("ogg") ? "ogg" : "webm";
         const file = new File([blob], `audio.${ext}`, { type: baseMime });
@@ -74,7 +72,6 @@ export default function Home() {
     [settings.groqApiKey]
   );
 
-  // ── Fetch suggestions ──────────────────────────────────────────────────────
   const fetchSuggestions = useCallback(async () => {
     const transcript = recentTranscript(settings.suggestionContextChars);
     if (!transcript.trim()) return;
@@ -108,29 +105,22 @@ export default function Home() {
     }
   }, [settings, recentTranscript]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Keep the ref in sync whenever fetchSuggestions is recreated (new transcript data)
   useEffect(() => {
     fetchSuggestionsRef.current = fetchSuggestions;
   }, [fetchSuggestions]);
 
-  // ── Auto-refresh loop ──────────────────────────────────────────────────────
   const startRefreshLoop = useCallback(() => {
     const interval = settings.refreshIntervalMs;
     setNextRefreshIn(interval);
 
-    // Use ref so the interval always calls the latest fetchSuggestions,
-    // not the stale closure captured when recording started
     refreshTimerRef.current = setInterval(() => {
       if (isRecordingRef.current) fetchSuggestionsRef.current();
     }, interval);
 
     countdownRef.current = setInterval(() => {
-      setNextRefreshIn((prev) => {
-        if (prev <= 1000) return interval;
-        return prev - 1000;
-      });
+      setNextRefreshIn((prev) => (prev <= 1000 ? interval : prev - 1000));
     }, 1000);
-  }, [settings.refreshIntervalMs]); // no longer depends on fetchSuggestions
+  }, [settings.refreshIntervalMs]);
 
   const stopRefreshLoop = useCallback(() => {
     if (refreshTimerRef.current) clearInterval(refreshTimerRef.current);
@@ -139,7 +129,6 @@ export default function Home() {
     countdownRef.current = null;
   }, []);
 
-  // ── Audio recorder ─────────────────────────────────────────────────────────
   const { isRecording, error: micError, start: startMic, stop: stopMic, flush: flushAudio } = useAudioRecorder({
     onChunk: transcribeChunk,
     chunkIntervalMs: 30000,
@@ -165,21 +154,16 @@ export default function Home() {
     stopRefreshLoop();
   }, [stopMic, stopRefreshLoop]);
 
-  // Stop loop on unmount
   useEffect(() => () => stopRefreshLoop(), [stopRefreshLoop]);
 
-  // ── Manual refresh: flush audio → transcribe → suggestions → reset timer ──
   const handleManualRefresh = useCallback(async () => {
-    // If recording, flush whatever audio has accumulated since the last chunk
     if (isRecordingRef.current) {
-      await flushAudio(); // awaits transcribeChunk internally
+      await flushAudio();
     }
     await fetchSuggestionsRef.current();
-    // Reset the auto-refresh countdown so it doesn't fire again immediately
     setNextRefreshIn(settings.refreshIntervalMs);
   }, [flushAudio, settings.refreshIntervalMs]);
 
-  // ── Send chat message ──────────────────────────────────────────────────────
   const handleChatSend = useCallback(
     async (text: string, suggestion?: Suggestion) => {
       if (!settings.groqApiKey) {
@@ -187,7 +171,6 @@ export default function Home() {
         setShowSettings(true);
         return;
       }
-      // Don't send if both the input text and the suggestion text are empty
       const effectiveContent = suggestion?.text || text;
       if (!effectiveContent?.trim()) return;
 
@@ -253,7 +236,7 @@ export default function Home() {
                 full += delta;
                 setStreamingContent(full);
               } catch {
-                // skip malformed
+                /* skip malformed SSE frames */
               }
             }
           }
@@ -281,14 +264,12 @@ export default function Home() {
     [settings, chatMessages, recentTranscript] // eslint-disable-line react-hooks/exhaustive-deps
   );
 
-  // ── Suggestion click → immediately send to chat ───────────────────────────
-  // Pass "" as text so content = suggestion.text only (no duplication)
+  // Clicking a suggestion sends it as-is; passing "" avoids duplicating the text.
   const handleSuggestionClick = useCallback(
     (suggestion: Suggestion) => handleChatSend("", suggestion),
     [handleChatSend]
   );
 
-  // ── Export ─────────────────────────────────────────────────────────────────
   const handleExport = () => {
     const session: ExportSession = {
       exportedAt: new Date().toISOString(),
@@ -298,10 +279,7 @@ export default function Home() {
       })),
       suggestionBatches: suggestionBatches.map((b) => ({
         timestamp: new Date(b.timestamp).toISOString(),
-        suggestions: b.suggestions.map((s) => ({
-          type: s.type,
-          text: s.text,
-        })),
+        suggestions: b.suggestions.map((s) => ({ type: s.type, text: s.text })),
       })),
       chat: chatMessages.map((m) => ({
         timestamp: new Date(m.timestamp).toISOString(),
@@ -328,7 +306,6 @@ export default function Home() {
 
   return (
     <div className="h-screen bg-[#0a0a0a] text-white flex flex-col overflow-hidden">
-      {/* Top bar */}
       <header className="flex items-center justify-between px-5 py-3 border-b border-white/8 shrink-0">
         <div className="flex items-center gap-2.5">
           <div className="w-6 h-6 bg-blue-500 rounded-md flex items-center justify-center">
@@ -368,9 +345,7 @@ export default function Home() {
         </div>
       </header>
 
-      {/* 3-column layout */}
       <main className="flex-1 flex overflow-hidden min-h-0">
-        {/* Left: Transcript */}
         <div className="w-[28%] border-r border-white/8 flex flex-col min-h-0">
           <TranscriptPanel
             chunks={transcriptChunks}
@@ -382,7 +357,6 @@ export default function Home() {
           />
         </div>
 
-        {/* Middle: Suggestions */}
         <div className="w-[35%] border-r border-white/8 flex flex-col min-h-0">
           <SuggestionsPanel
             batches={suggestionBatches}
@@ -393,7 +367,6 @@ export default function Home() {
           />
         </div>
 
-        {/* Right: Chat */}
         <div className="flex-1 flex flex-col min-h-0">
           <ChatPanel
             messages={chatMessages}
