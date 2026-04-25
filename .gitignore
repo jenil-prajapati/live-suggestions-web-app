@@ -41,5 +41,3 @@ yarn-error.log*
 next-env.d.ts
 
 # Cursor / AI scaffolding
-AGENTS.md
-CLAUDE.md
