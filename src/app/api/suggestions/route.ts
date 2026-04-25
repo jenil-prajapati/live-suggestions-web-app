@@ -27,7 +27,7 @@ export async function POST(req: NextRequest) {
         {
           role: "system",
           content:
-            "You are an AI meeting copilot. Always respond with ONLY a valid JSON array — no markdown, no explanation.",
+            'You are an AI meeting copilot. Respond with ONLY a valid JSON array. Each object must have exactly two keys: "type" and "text". No markdown, no extra keys, no explanation.',
         },
         { role: "user", content: filledPrompt },
       ],
@@ -65,7 +65,10 @@ export async function POST(req: NextRequest) {
       id: `${Date.now()}-${i}`,
       type: s.type ?? "talking_point",
       // Accept whatever field name the model chose
-      text: s.text ?? s.title ?? s.suggestion ?? s.content ?? s.description ?? s.preview ?? "",
+      // Model sometimes returns preview/title instead of text; pick the longest non-empty value
+      text: [s.text, s.preview, s.suggestion, s.content, s.description, s.title]
+        .filter((v): v is string => typeof v === "string" && v.trim().length > 0)
+        .sort((a, b) => b.length - a.length)[0] ?? "",
     })).filter((s) => s.text);
 
     if (suggestions.length === 0) {
