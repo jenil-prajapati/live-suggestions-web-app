@@ -80,7 +80,7 @@ export function TranscriptPanel({
       </div>
 
       {/* Transcript */}
-      <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3">
+      <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
         {chunks.length === 0 ? (
           <p className="text-xs text-white/25 italic text-center mt-8">
             No transcript yet — start the mic.
@@ -88,9 +88,14 @@ export function TranscriptPanel({
         ) : (
           chunks.map((chunk) => (
             <div key={chunk.id}>
-              <p className="text-[10px] text-white/25 mb-1">
-                {new Date(chunk.timestamp).toLocaleTimeString()}
-              </p>
+              {/* Timestamp divider matching prototype style */}
+              <div className="flex items-center gap-2 mb-2">
+                <div className="flex-1 h-px bg-white/8" />
+                <span className="text-[9px] font-mono text-white/30 shrink-0">
+                  {new Date(chunk.timestamp).toLocaleTimeString()}
+                </span>
+                <div className="flex-1 h-px bg-white/8" />
+              </div>
               <p className="text-sm text-white/80 leading-relaxed">{chunk.text}</p>
             </div>
           ))

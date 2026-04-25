@@ -282,8 +282,9 @@ export default function Home() {
   );
 
   // ── Suggestion click → immediately send to chat ───────────────────────────
+  // Pass "" as text so content = suggestion.text only (no duplication)
   const handleSuggestionClick = useCallback(
-    (suggestion: Suggestion) => handleChatSend(suggestion.text, suggestion),
+    (suggestion: Suggestion) => handleChatSend("", suggestion),
     [handleChatSend]
   );
 

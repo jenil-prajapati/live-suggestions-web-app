@@ -22,17 +22,17 @@ export function SuggestionCard({ suggestion, onClick, faded = false }: Props) {
     <button
       onClick={() => suggestion.text && onClick(suggestion)}
       disabled={!suggestion.text}
-      className={`w-full text-left rounded-lg border border-white/10 bg-white/5 hover:bg-white/10 hover:border-white/20 active:scale-[0.99] transition-all duration-150 px-3 py-2.5 group disabled:cursor-not-allowed ${
+      className={`w-full text-left rounded-md border border-white/10 bg-white/5 hover:bg-white/10 hover:border-white/20 active:scale-[0.99] transition-all duration-150 px-2.5 py-2 group disabled:cursor-not-allowed ${
         faded ? "opacity-45 hover:opacity-70" : ""
       }`}
     >
-      <span className={`inline-block text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded border mb-2 ${config.color}`}>
+      <span className={`inline-block text-[9px] font-semibold uppercase tracking-wide px-1 py-0.5 rounded border mb-1.5 ${config.color}`}>
         {config.label}
       </span>
       {suggestion.text ? (
-        <p className="text-sm text-white/85 leading-snug">{suggestion.text}</p>
+        <p className="text-xs text-white/85 leading-snug">{suggestion.text}</p>
       ) : (
-        <p className="text-xs text-white/25 italic">Loading…</p>
+        <p className="text-[10px] text-white/25 italic">Loading…</p>
       )}
     </button>
   );

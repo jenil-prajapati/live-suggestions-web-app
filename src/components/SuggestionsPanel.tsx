@@ -79,10 +79,15 @@ export function SuggestionsPanel({
         ) : (
           [...batches].reverse().map((batch, batchIdx) => (
             <div key={batch.id}>
-              <p className="text-[10px] text-white/25 mb-2">
-                {new Date(batch.timestamp).toLocaleTimeString()}
-              </p>
-              <div className="space-y-2">
+              {/* Batch timestamp divider */}
+              <div className="flex items-center gap-2 mb-2">
+                <div className="flex-1 h-px bg-white/8" />
+                <span className="text-[9px] font-mono text-white/25 shrink-0">
+                  {`— BATCH ${batches.length - batchIdx} · ${new Date(batch.timestamp).toLocaleTimeString()} —`}
+                </span>
+                <div className="flex-1 h-px bg-white/8" />
+              </div>
+              <div className="space-y-1.5">
                 {batch.suggestions.map((s) => (
                   <SuggestionCard
                     key={s.id}
