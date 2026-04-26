@@ -6,7 +6,7 @@ import { DEFAULT_SETTINGS } from "@/lib/defaults";
 const STORAGE_KEY = "twinmind_settings";
 const VERSION_KEY = "twinmind_settings_version";
 // Bump whenever prompt defaults change so stale prompts in localStorage are replaced.
-const SETTINGS_VERSION = 5;
+const SETTINGS_VERSION = 6;
 
 export function useSettings() {
   const [settings, setSettings] = useState<SessionSettings>({
@@ -16,6 +16,10 @@ export function useSettings() {
   const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
+    // Mount-time hydration from localStorage. setState-in-effect is correct
+    // here — React state has to be initialised from a side-effectful source
+    // exactly once on the client.
+    /* eslint-disable react-hooks/set-state-in-effect */
     try {
       const storedVersion = Number(localStorage.getItem(VERSION_KEY) ?? "0");
       const stored = localStorage.getItem(STORAGE_KEY);
@@ -38,6 +42,7 @@ export function useSettings() {
       /* localStorage unavailable — fall back to defaults */
     }
     setLoaded(true);
+    /* eslint-enable react-hooks/set-state-in-effect */
   }, []);
 
   const updateSettings = (updates: Partial<SessionSettings>) => {

@@ -1,300 +1,55 @@
 "use client";
-import { useState, useCallback, useEffect, useRef } from "react";
-import { useAudioRecorder } from "@/hooks/useAudioRecorder";
+import { useCallback, useState } from "react";
+import { useLiveSession } from "@/hooks/useLiveSession";
 import { useSettings } from "@/hooks/useSettings";
 import { TranscriptPanel } from "@/components/TranscriptPanel";
 import { SuggestionsPanel } from "@/components/SuggestionsPanel";
 import { ChatPanel } from "@/components/ChatPanel";
 import { SettingsModal } from "@/components/SettingsModal";
-import type {
-  TranscriptChunk,
-  SuggestionBatch,
-  Suggestion,
-  ChatMessage,
-  ExportSession,
-} from "@/lib/types";
+import { buildExportSession, downloadSession } from "@/lib/export";
+import type { Suggestion, SuggestionBatch } from "@/lib/types";
 
 export default function Home() {
   const { settings, updateSettings, loaded } = useSettings();
-
-  const [transcriptChunks, setTranscriptChunks] = useState<TranscriptChunk[]>([]);
-  const [isTranscribing, setIsTranscribing] = useState(false);
-  const [transcribeError, setTranscribeError] = useState<string | null>(null);
-
-  const [suggestionBatches, setSuggestionBatches] = useState<SuggestionBatch[]>([]);
-  const [isSuggestionsLoading, setIsSuggestionsLoading] = useState(false);
-  const [nextRefreshIn, setNextRefreshIn] = useState(0);
-
-  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
-  const [isStreaming, setIsStreaming] = useState(false);
-  const [streamingContent, setStreamingContent] = useState("");
-
   const [showSettings, setShowSettings] = useState(false);
   const [noApiKeyWarning, setNoApiKeyWarning] = useState(false);
 
-  const refreshTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const isRecordingRef = useRef(false);
-  // Points to the latest fetchSuggestions so setInterval never captures a stale closure.
-  const fetchSuggestionsRef = useRef<() => Promise<void>>(async () => {});
-
-  const fullTranscript = transcriptChunks.map((c) => c.text).join(" ");
-  const recentTranscript = (chars: number) => fullTranscript.slice(-chars);
-
-  const transcribeChunk = useCallback(
-    async (blob: Blob) => {
-      if (!settings.groqApiKey) return;
-      setIsTranscribing(true);
-      setTranscribeError(null);
-      try {
-        // Whisper rejects MIME types with codec suffixes (e.g. audio/webm;codecs=opus).
-        const baseMime = blob.type.split(";")[0];
-        const ext = baseMime.includes("ogg") ? "ogg" : "webm";
-        const file = new File([blob], `audio.${ext}`, { type: baseMime });
-        const fd = new FormData();
-        fd.append("audio", file);
-        fd.append("apiKey", settings.groqApiKey);
-        const res = await fetch("/api/transcribe", { method: "POST", body: fd });
-        const data = await res.json();
-        if (data.error) throw new Error(data.error);
-        if (data.text?.trim()) {
-          setTranscriptChunks((prev) => [
-            ...prev,
-            { id: `${Date.now()}`, text: data.text.trim(), timestamp: Date.now() },
-          ]);
-        }
-      } catch (err) {
-        setTranscribeError(err instanceof Error ? err.message : "Transcription failed");
-      } finally {
-        setIsTranscribing(false);
-      }
-    },
-    [settings.groqApiKey]
-  );
-
-  const fetchSuggestions = useCallback(async () => {
-    const transcript = recentTranscript(settings.suggestionContextChars);
-    if (!transcript.trim()) return;
-    if (!settings.groqApiKey) {
-      setNoApiKeyWarning(true);
-      return;
-    }
-    setIsSuggestionsLoading(true);
-    try {
-      const res = await fetch("/api/suggestions", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          transcript,
-          prompt: settings.suggestionPrompt,
-          apiKey: settings.groqApiKey,
-        }),
-      });
-      const data = await res.json();
-      if (data.error) throw new Error(data.error);
-      if (data.suggestions?.length) {
-        setSuggestionBatches((prev) => [
-          ...prev,
-          { id: `${Date.now()}`, timestamp: Date.now(), suggestions: data.suggestions },
-        ]);
-      }
-    } catch (err) {
-      console.error("Suggestions error:", err);
-    } finally {
-      setIsSuggestionsLoading(false);
-    }
-  }, [settings, recentTranscript]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  useEffect(() => {
-    fetchSuggestionsRef.current = fetchSuggestions;
-  }, [fetchSuggestions]);
-
-  const startRefreshLoop = useCallback(() => {
-    const interval = settings.refreshIntervalMs;
-    setNextRefreshIn(interval);
-
-    refreshTimerRef.current = setInterval(() => {
-      if (isRecordingRef.current) fetchSuggestionsRef.current();
-    }, interval);
-
-    countdownRef.current = setInterval(() => {
-      setNextRefreshIn((prev) => (prev <= 1000 ? interval : prev - 1000));
-    }, 1000);
-  }, [settings.refreshIntervalMs]);
-
-  const stopRefreshLoop = useCallback(() => {
-    if (refreshTimerRef.current) clearInterval(refreshTimerRef.current);
-    if (countdownRef.current) clearInterval(countdownRef.current);
-    refreshTimerRef.current = null;
-    countdownRef.current = null;
+  const handleMissingApiKey = useCallback(() => {
+    setNoApiKeyWarning(true);
+    setShowSettings(true);
   }, []);
 
-  const { isRecording, error: micError, start: startMic, stop: stopMic, flush: flushAudio } = useAudioRecorder({
-    onChunk: transcribeChunk,
-    chunkIntervalMs: 30000,
-  });
+  const session = useLiveSession({ settings, onMissingApiKey: handleMissingApiKey });
 
-  useEffect(() => {
-    isRecordingRef.current = isRecording;
-  }, [isRecording]);
+  // Find the batch a clicked suggestion belongs to so we can record the link.
+  const handleSuggestionClick = useCallback(
+    (suggestion: Suggestion) => {
+      const batch = session.suggestionBatches.find((b: SuggestionBatch) =>
+        b.suggestions.some((s) => s.id === suggestion.id)
+      );
+      session.clickSuggestion(suggestion, batch?.id ?? "");
+    },
+    [session]
+  );
 
   const handleStart = useCallback(() => {
     if (!settings.groqApiKey) {
-      setNoApiKeyWarning(true);
-      setShowSettings(true);
+      handleMissingApiKey();
       return;
     }
     setNoApiKeyWarning(false);
-    startMic();
-    startRefreshLoop();
-  }, [settings.groqApiKey, startMic, startRefreshLoop]);
+    session.start();
+  }, [handleMissingApiKey, session, settings.groqApiKey]);
 
-  const handleStop = useCallback(() => {
-    stopMic();
-    stopRefreshLoop();
-  }, [stopMic, stopRefreshLoop]);
-
-  useEffect(() => () => stopRefreshLoop(), [stopRefreshLoop]);
-
-  const handleManualRefresh = useCallback(async () => {
-    if (isRecordingRef.current) {
-      await flushAudio();
-    }
-    await fetchSuggestionsRef.current();
-    setNextRefreshIn(settings.refreshIntervalMs);
-  }, [flushAudio, settings.refreshIntervalMs]);
-
-  const handleChatSend = useCallback(
-    async (text: string, suggestion?: Suggestion) => {
-      if (!settings.groqApiKey) {
-        setNoApiKeyWarning(true);
-        setShowSettings(true);
-        return;
-      }
-      const effectiveContent = suggestion?.text || text;
-      if (!effectiveContent?.trim()) return;
-
-      const typeLabels: Record<string, string> = {
-        question_to_ask: "Question to ask",
-        talking_point: "Talking point",
-        answer: "Answer",
-        fact_check: "Fact-check",
-        clarification: "Clarification",
-      };
-      const userMsg: ChatMessage = {
-        id: `u-${Date.now()}`,
-        role: "user",
-        content: suggestion
-          ? text ? `${suggestion.text}\n\n${text}` : suggestion.text
-          : text,
-        timestamp: Date.now(),
-        suggestionRef: suggestion ? typeLabels[suggestion.type] : undefined,
-      };
-      setChatMessages((prev) => [...prev, userMsg]);
-      setIsStreaming(true);
-      setStreamingContent("");
-
-      const transcript = recentTranscript(settings.detailedAnswerContextChars);
-
-      try {
-        const res = await fetch("/api/chat", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            transcript,
-            chatHistory: chatMessages.slice(-10),
-            userMessage: userMsg.content,
-            prompt: settings.chatPrompt,
-            apiKey: settings.groqApiKey,
-            suggestionContext: suggestion
-              ? { type: suggestion.type, text: suggestion.text }
-              : null,
-            detailedAnswerPrompt: suggestion ? settings.detailedAnswerPrompt : undefined,
-          }),
-        });
-
-        if (!res.ok) {
-          const errData = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
-          throw new Error(errData.error ?? `HTTP ${res.status}`);
-        }
-        if (!res.body) throw new Error("No response body");
-
-        const reader = res.body.getReader();
-        const decoder = new TextDecoder();
-        let full = "";
-
-        while (true) {
-          const { value, done } = await reader.read();
-          if (done) break;
-          const text = decoder.decode(value, { stream: true });
-          for (const line of text.split("\n")) {
-            if (line.startsWith("data: ")) {
-              const payload = line.slice(6);
-              if (payload === "[DONE]") break;
-              try {
-                const { delta } = JSON.parse(payload);
-                full += delta;
-                setStreamingContent(full);
-              } catch {
-                /* skip malformed SSE frames */
-              }
-            }
-          }
-        }
-
-        setChatMessages((prev) => [
-          ...prev,
-          { id: `a-${Date.now()}`, role: "assistant", content: full, timestamp: Date.now() },
-        ]);
-      } catch (err) {
-        setChatMessages((prev) => [
-          ...prev,
-          {
-            id: `a-err-${Date.now()}`,
-            role: "assistant",
-            content: `Error: ${err instanceof Error ? err.message : "Unknown error"}`,
-            timestamp: Date.now(),
-          },
-        ]);
-      } finally {
-        setIsStreaming(false);
-        setStreamingContent("");
-      }
-    },
-    [settings, chatMessages, recentTranscript] // eslint-disable-line react-hooks/exhaustive-deps
-  );
-
-  // Clicking a suggestion sends it as-is; passing "" avoids duplicating the text.
-  const handleSuggestionClick = useCallback(
-    (suggestion: Suggestion) => handleChatSend("", suggestion),
-    [handleChatSend]
-  );
-
-  const handleExport = () => {
-    const session: ExportSession = {
-      exportedAt: new Date().toISOString(),
-      transcript: transcriptChunks.map((c) => ({
-        timestamp: new Date(c.timestamp).toISOString(),
-        text: c.text,
-      })),
-      suggestionBatches: suggestionBatches.map((b) => ({
-        timestamp: new Date(b.timestamp).toISOString(),
-        suggestions: b.suggestions.map((s) => ({ type: s.type, text: s.text })),
-      })),
-      chat: chatMessages.map((m) => ({
-        timestamp: new Date(m.timestamp).toISOString(),
-        role: m.role,
-        content: m.content,
-      })),
-    };
-    const blob = new Blob([JSON.stringify(session, null, 2)], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `twinmind-session-${Date.now()}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
-  };
+  const handleExport = useCallback(() => {
+    const exportData = buildExportSession({
+      sessionStartedAt: session.sessionStartedAt,
+      transcriptChunks: session.transcriptChunks,
+      suggestionBatches: session.suggestionBatches,
+      chatMessages: session.chatMessages,
+    });
+    downloadSession(exportData);
+  }, [session]);
 
   if (!loaded) {
     return (
@@ -348,31 +103,31 @@ export default function Home() {
       <main className="flex-1 flex overflow-hidden min-h-0">
         <div className="w-[28%] border-r border-white/8 flex flex-col min-h-0">
           <TranscriptPanel
-            chunks={transcriptChunks}
-            isRecording={isRecording}
-            isTranscribing={isTranscribing}
-            error={micError || transcribeError}
+            chunks={session.transcriptChunks}
+            isRecording={session.isRecording}
+            isTranscribing={session.isTranscribing}
+            error={session.micError || session.transcribeError}
             onStart={handleStart}
-            onStop={handleStop}
+            onStop={session.stop}
           />
         </div>
 
         <div className="w-[35%] border-r border-white/8 flex flex-col min-h-0">
           <SuggestionsPanel
-            batches={suggestionBatches}
-            isLoading={isSuggestionsLoading}
-            nextRefreshIn={nextRefreshIn}
-            onRefresh={handleManualRefresh}
+            batches={session.suggestionBatches}
+            isLoading={session.isSuggestionsLoading}
+            nextRefreshIn={session.nextRefreshIn}
+            onRefresh={session.manualRefresh}
             onSuggestionClick={handleSuggestionClick}
           />
         </div>
 
         <div className="flex-1 flex flex-col min-h-0">
           <ChatPanel
-            messages={chatMessages}
-            isStreaming={isStreaming}
-            streamingContent={streamingContent}
-            onSend={(text) => handleChatSend(text)}
+            messages={session.chatMessages}
+            isStreaming={session.isStreaming}
+            streamingContent={session.streamingContent}
+            onSend={session.sendChat}
           />
         </div>
       </main>

@@ -13,7 +13,11 @@ export interface Suggestion {
 
 export interface SuggestionBatch {
   id: string;
+  /** Wall-clock time when the batch was committed to state. */
   timestamp: number;
+  /** Index of the latest transcript chunk that was committed before this batch.
+   *  Lets the UI/export prove a batch never appeared without its chunk. */
+  basedOnChunkId: string | null;
   suggestions: Suggestion[];
 }
 
@@ -24,6 +28,10 @@ export interface ChatMessage {
   timestamp: number;
   /** Populated when the message originated from a suggestion click. */
   suggestionRef?: string;
+  /** Batch id the clicked suggestion came from (for export integrity). */
+  suggestionBatchId?: string;
+  /** Suggestion id the user clicked (for export integrity). */
+  suggestionId?: string;
 }
 
 export interface TranscriptChunk {
@@ -37,17 +45,30 @@ export interface SessionSettings {
   suggestionPrompt: string;
   detailedAnswerPrompt: string;
   chatPrompt: string;
+  /** How much earlier transcript to send alongside the latest chunk for live suggestions. */
   suggestionContextChars: number;
+  /** Larger window for detailed answers and direct chat. */
   detailedAnswerContextChars: number;
   refreshIntervalMs: number;
 }
 
 export interface ExportSession {
+  appVersion: string;
   exportedAt: string;
-  transcript: { timestamp: string; text: string }[];
+  sessionStartedAt: string | null;
+  transcript: { id: string; timestamp: string; text: string }[];
   suggestionBatches: {
+    id: string;
     timestamp: string;
-    suggestions: { type: string; text: string }[];
+    basedOnChunkId: string | null;
+    suggestions: { id: string; type: string; text: string; clicked: boolean }[];
   }[];
-  chat: { timestamp: string; role: string; content: string }[];
+  chat: {
+    id: string;
+    timestamp: string;
+    role: string;
+    content: string;
+    suggestionBatchId?: string;
+    suggestionId?: string;
+  }[];
 }

@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import type { Suggestion, SuggestionBatch } from "@/lib/types";
 import { SuggestionCard } from "./SuggestionCard";
 
@@ -19,14 +19,14 @@ export function SuggestionsPanel({
   onSuggestionClick,
 }: Props) {
   const topRef = useRef<HTMLDivElement>(null);
-  const [prevBatchCount, setPrevBatchCount] = useState(0);
+  const prevBatchCountRef = useRef(0);
 
   useEffect(() => {
-    if (batches.length > prevBatchCount) {
+    if (batches.length > prevBatchCountRef.current) {
       topRef.current?.scrollIntoView({ behavior: "smooth" });
-      setPrevBatchCount(batches.length);
+      prevBatchCountRef.current = batches.length;
     }
-  }, [batches.length, prevBatchCount]);
+  }, [batches.length]);
 
   const seconds = Math.ceil(nextRefreshIn / 1000);
 
